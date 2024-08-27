@@ -360,10 +360,10 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
         border_cells_2 <- results_2$nearest_cells
         updated_cluster2_obs <- results_2$cluster1_obs
         
-        print(paste("BORDER CELLS 1:", max(border_cells_1)))
+        print(paste("BORDER CELLS 1:", length(border_cells_1)))
         print(paste("Updated Cluster 1:", nrow(updated_cluster1_obs)))
         
-        print(paste("BORDER CELLS 2:", max(border_cells_2)))
+        print(paste("BORDER CELLS 2:", length(border_cells_2)))
         print(paste("Updated Cluster 2:", nrow(updated_cluster2_obs)))
         
         # Get the nearest points in updated cluster1 (border points)
@@ -375,6 +375,8 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
         if (nrow(non_border_cells_1) > 0) {
           border_nn_result_1 <- nn2(data = non_border_cells_1, query = border_points_1, k = 1)
           border_to_nonborder_1 <- border_nn_result_1$nn.dists
+        } else {
+          print("NO non-border cells for cluster 1")
         }
         
         # -------- Process for updated cluster2 -------------- #
@@ -388,6 +390,8 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
         if (nrow(non_border_cells_2) > 0) {
           border_nn_result_2 <- nn2(data = non_border_cells_2, query = border_points_2, k = 1)
           border_to_nonborder_2 <- border_nn_result_2$nn.dists
+        }else {
+          print("NO non-border cells for cluster 2")
         }
         
         # Nearest neighbors from updated cluster1 to updated cluster2 and vice versa
@@ -546,6 +550,7 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
   
   # Check if the input data dimensions match
   if (ncol(cluster1_obs) != ncol(cluster2_obs)) {
+    print("Dimension Mismatch problem.")
     return(list(
       cluster1_obs = NULL, nearest_cells = NULL, error_message = "DIMENSION MISMATCH"
     ))
@@ -555,6 +560,7 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
   repeat {
     # Check for empty data conditions
     if (nrow(cluster1_obs) < 1 || nrow(cluster2_obs) < 1) {
+      print("No data remaining! A cluster has been emptied")
       return(list(
         cluster1_obs = NULL, nearest_cells = NULL, error_message = "NOT ENOUGH DATA"
       ))
@@ -575,6 +581,7 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
     
     # Remove the overrepresented cells from cluster1
     cluster1_obs <- cluster1_obs[-as.numeric(overrepresented), , drop = FALSE]
+    print("Overrepresented detection.")
   }
   
   # Return the updated cluster1_obs and the matching nearest neighbor indices
