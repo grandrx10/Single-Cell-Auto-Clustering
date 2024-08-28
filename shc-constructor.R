@@ -564,7 +564,7 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
     neighbor_counts <- table(nearest_neighbors)
     
     # Identify neighbors that are shared by more than 10% of cluster2 cells
-    overrepresented <- as.numeric(names(neighbor_counts[neighbor_counts > 0.1 * nrow(cluster2_obs)]))
+    overrepresented <- as.numeric(names(neighbor_counts[neighbor_counts > 0.3 * nrow(cluster2_obs)]))
     
     # If no overrepresented neighbors are found, exit the loop
     if (length(overrepresented) == 0) break
