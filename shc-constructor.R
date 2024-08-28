@@ -352,67 +352,57 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
       results_1 <- find_border_cells(cluster1_obs, cluster2_obs)
       results_2 <- find_border_cells(cluster2_obs, cluster1_obs)
       
-      if (is.null(results_1$error_message) && is.null(results_2$error_message)) {
-        # Extract border cells and updated observations
-        border_cells_1 <- results_1$nearest_cells
-        updated_cluster1_obs <- results_1$cluster1_obs
-        
-        border_cells_2 <- results_2$nearest_cells
-        updated_cluster2_obs <- results_2$cluster1_obs
-        
-        print(paste("BORDER CELLS 1:", length(border_cells_1)))
-        print(paste("Updated Cluster 1:", nrow(updated_cluster1_obs)))
-        
-        print(paste("BORDER CELLS 2:", length(border_cells_2)))
-        print(paste("Updated Cluster 2:", nrow(updated_cluster2_obs)))
-        
-        # Get the nearest points in updated cluster1 (border points)
-        border_points_1 <- updated_cluster1_obs[border_cells_1, , drop = FALSE]
-        
-        # Exclude border cells from updated cluster1 observations
-        non_border_cells_1 <- updated_cluster1_obs[-border_cells_1, , drop = FALSE]
-        
-        if (nrow(non_border_cells_1) > 0) {
-          border_nn_result_1 <- nn2(data = non_border_cells_1, query = border_points_1, k = 1)
-          border_to_nonborder_1 <- border_nn_result_1$nn.dists
-        } else {
-          print("NO non-border cells for cluster 1")
-        }
-        
-        # -------- Process for updated cluster2 -------------- #
-        
-        # Get the nearest points in updated cluster2 (border points)
-        border_points_2 <- updated_cluster2_obs[border_cells_2, , drop = FALSE]
-        
-        # Exclude border cells from updated cluster2 observations
-        non_border_cells_2 <- updated_cluster2_obs[-border_cells_2, , drop = FALSE]
-        
-        if (nrow(non_border_cells_2) > 0) {
-          border_nn_result_2 <- nn2(data = non_border_cells_2, query = border_points_2, k = 1)
-          border_to_nonborder_2 <- border_nn_result_2$nn.dists
-        }else {
-          print("NO non-border cells for cluster 2")
-        }
-        
-        # Nearest neighbors from updated cluster1 to updated cluster2 and vice versa
-        nn_result_1 <- nn2(data = updated_cluster2_obs, query = border_points_1, k = 1)
-        border_to_other_1 <- nn_result_1$nn.dists
-        
-        nn_result_2 <- nn2(data = updated_cluster1_obs, query = border_points_2, k = 1)
-        border_to_other_2 <- nn_result_2$nn.dists
-        
-        #   
-        #   
-        #   # Exclude border cells from cluster1 observations
-        
-        if (exists("border_to_nonborder_1") && exists("border_to_nonborder_2") 
-            && exists("border_to_other_1") && exists("border_to_other_2")) {
-          border_to_other <- c(border_to_other_1, border_to_other_2)
-          border_to_self <- c(border_to_nonborder_1, border_to_nonborder_2)
-          wilcox_result <- wilcox.test(border_to_other, border_to_self, alternative = "greater", paired=TRUE)
-          pval <- wilcox_result$p.value
-        }
-      }
+      # Extract border cells and updated observations
+      border_cells_1 <- results_1$border_cells
+      
+      border_cells_2 <- results_2$border_cells
+      
+      # Get the nearest points in updated cluster1 (border points)
+      border_points_1 <- border_cells_1#cluster1_obs[border_cells_1, , drop = FALSE]
+      
+      # Exclude border cells from updated cluster1 observations
+      # non_border_cells_1 <- cluster1_obs[-border_cells_1, , drop = FALSE]
+      
+      # if (nrow(non_border_cells_1) > 0) {
+        border_nn_result_1 <- nn2(data = cluster1_obs, query = border_points_1, k = 2)
+        border_to_nonborder_1 <- border_nn_result_1$nn.dists[,2]
+      # } else {
+      #   print("NO non-border cells for cluster 1")
+      # }
+      
+      # -------- Process for updated cluster2 -------------- #
+      
+      # Get the nearest points in updated cluster2 (border points)
+      border_points_2 <- border_cells_2#cluster2_obs[border_cells_2, , drop = FALSE]
+      
+      # Exclude border cells from updated cluster2 observations
+      # non_border_cells_2 <- cluster2_obs[-border_cells_2, , drop = FALSE]
+      # 
+      # if (nrow(non_border_cells_2) > 0) {
+        border_nn_result_2 <- nn2(data = cluster2_obs, query = border_points_2, k = 2)
+        border_to_nonborder_2 <- border_nn_result_2$nn.dists[,2]
+      # }else {
+      #   print("NO non-border cells for cluster 2")
+      # }
+      
+      # Nearest neighbors from updated cluster1 to updated cluster2 and vice versa
+      nn_result_1 <- nn2(data = cluster2_obs, query = border_points_1, k = 1)
+      border_to_other_1 <- nn_result_1$nn.dists
+      
+      nn_result_2 <- nn2(data = cluster1_obs, query = border_points_2, k = 1)
+      border_to_other_2 <- nn_result_2$nn.dists
+      
+      #   
+      #   
+      #   # Exclude border cells from cluster1 observations
+      
+      # if (exists("border_to_nonborder_1") && exists("border_to_nonborder_2") 
+      #     && exists("border_to_other_1") && exists("border_to_other_2")) {
+        border_to_other <- c(border_to_other_1, border_to_other_2)
+        border_to_self <- c(border_to_nonborder_1, border_to_nonborder_2)
+        wilcox_result <- wilcox.test(border_to_other, border_to_self, alternative = "greater", paired=TRUE)
+        pval <- wilcox_result$p.value
+      # }
     
     } else {
       print("Clusters are not large enough.")
@@ -548,21 +538,21 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
   # Load the RANN package
   library(RANN)
   
-  # Check if the input data dimensions match
-  if (ncol(cluster1_obs) != ncol(cluster2_obs)) {
-    print("Dimension Mismatch problem.")
-    return(list(
-      cluster1_obs = NULL, nearest_cells = NULL, error_message = "DIMENSION MISMATCH"
-    ))
-  }
+  # Make a copy of the original cluster1_obs to preserve the original data
+  original_cluster1_obs <- cluster1_obs
   
-  # Main loop to find and remove overrepresented neighbors
+  # Initialize vector to store indices of border cells
+  border_indices <- integer(0)
+  
+  # Create a vector to keep track of the original indices
+  original_indices <- seq_len(nrow(cluster1_obs))
+  
   repeat {
     # Check for empty data conditions
     if (nrow(cluster1_obs) < 1 || nrow(cluster2_obs) < 1) {
       print("No data remaining! A cluster has been emptied")
       return(list(
-        cluster1_obs = NULL, nearest_cells = NULL, error_message = "NOT ENOUGH DATA"
+        border_cells = original_cluster1_obs, error_message = "NOT ENOUGH DATA"
       ))
     }
     
@@ -574,19 +564,83 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
     neighbor_counts <- table(nearest_neighbors)
     
     # Identify neighbors that are shared by more than 10% of cluster2 cells
-    overrepresented <- names(neighbor_counts[neighbor_counts > 0.1 * nrow(cluster2_obs)])
+    overrepresented <- as.numeric(names(neighbor_counts[neighbor_counts > 0.1 * nrow(cluster2_obs)]))
     
     # If no overrepresented neighbors are found, exit the loop
     if (length(overrepresented) == 0) break
     
-    # Remove the overrepresented cells from cluster1
-    cluster1_obs <- cluster1_obs[-as.numeric(overrepresented), , drop = FALSE]
+    # Add overrepresented neighbors to the border_indices (using original indices)
+    border_indices <- unique(c(border_indices, original_indices[overrepresented]))
+    
+    # Remove the overrepresented cells from cluster1 and update original_indices
+    cluster1_obs <- cluster1_obs[-overrepresented, , drop = FALSE]
+    original_indices <- original_indices[-overrepresented]
     print("Overrepresented detection.")
   }
   
-  # Return the updated cluster1_obs and the matching nearest neighbor indices
-  return(list(cluster1_obs = cluster1_obs, nearest_cells = nearest_neighbors, error_message = NULL))
+  # Find nearest neighbors in the final remaining cluster1_obs for each cell in cluster2_obs
+  nn_final <- nn2(data = cluster1_obs, query = cluster2_obs, k = 1)
+  nearest_neighbors_final <- nn_final$nn.idx[, 1]
+  
+  # Add final nearest neighbors to the border_indices (using original indices)
+  border_indices <- unique(c(border_indices, original_indices[nearest_neighbors_final]))
+  
+  # Use the original_cluster1_obs to extract border cells by their indices
+  border_cells <- original_cluster1_obs[border_indices, , drop = FALSE]
+  
+  # Return the border cells and any error message
+  return(list(border_cells = border_cells, error_message = NULL))
 }
+
+
+
+
+
+# find_border_cells <- function(cluster1_obs, cluster2_obs) {
+#   # Load the RANN package
+#   library(RANN)
+#   
+#   # Check if the input data dimensions match
+#   if (ncol(cluster1_obs) != ncol(cluster2_obs)) {
+#     print("Dimension Mismatch problem.")
+#     return(list(
+#       cluster1_obs = NULL, nearest_cells = NULL, error_message = "DIMENSION MISMATCH"
+#     ))
+#   }
+#   
+#   # Main loop to find and remove overrepresented neighbors
+#   repeat {
+#     # Check for empty data conditions
+#     if (nrow(cluster1_obs) < 1 || nrow(cluster2_obs) < 1) {
+#       print("No data remaining! A cluster has been emptied")
+#       return(list(
+#         cluster1_obs = NULL, nearest_cells = NULL, error_message = "NOT ENOUGH DATA"
+#       ))
+#     }
+#     
+#     # Find nearest neighbors in cluster1 for each cell in cluster2
+#     nn <- nn2(data = cluster1_obs, query = cluster2_obs, k = 1)
+#     nearest_neighbors <- nn$nn.idx[, 1]
+#     
+#     # Calculate the frequency of each neighbor
+#     neighbor_counts <- table(nearest_neighbors)
+#     
+#     # Identify neighbors that are shared by more than 10% of cluster2 cells
+#     overrepresented <- names(neighbor_counts[neighbor_counts > 0.3 * nrow(cluster2_obs)])
+#     
+#     nearest_neighbors <- unique(nearest_neighbors)
+#     
+#     # If no overrepresented neighbors are found, exit the loop
+#     if (length(overrepresented) == 0) break
+#     
+#     # Remove the overrepresented cells from cluster1
+#     cluster1_obs <- cluster1_obs[-as.numeric(overrepresented), , drop = FALSE]
+#     print("Overrepresented detection.")
+#   }
+#   
+#   # Return the updated cluster1_obs and the matching nearest neighbor indices
+#   return(list(cluster1_obs = cluster1_obs, nearest_cells = nearest_neighbors, error_message = NULL))
+# }
 
 
 
