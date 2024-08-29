@@ -357,52 +357,56 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
       
       border_cells_2 <- results_2$border_cells
       
-      # Get the nearest points in updated cluster1 (border points)
-      border_points_1 <- border_cells_1#cluster1_obs[border_cells_1, , drop = FALSE]
+      if (is.null(results_1$error_message) && is.null(results_2$error_message)) {
+        # Get the nearest points in updated cluster1 (border points)
+        border_points_1 <- cluster1_obs[border_cells_1, , drop = FALSE]
+        
+        # Exclude border cells from updated cluster1 observations
+        # non_border_cells_1 <- cluster1_obs[-border_cells_1, , drop = FALSE]
+        
+        # if (nrow(non_border_cells_1) > 0) {
+          border_nn_result_1 <- nn2(data = cluster1_obs, query = border_points_1, k = 2)
+          border_to_nonborder_1 <- border_nn_result_1$nn.dists[,2]
+        # } else {
+        #   print("NO non-border cells for cluster 1")
+        # }
+        
+        # -------- Process for updated cluster2 -------------- #
+        
+        # Get the nearest points in updated cluster2 (border points)
+        border_points_2 <- cluster2_obs[border_cells_2, , drop = FALSE]
+        
+        # Exclude border cells from updated cluster2 observations
+        # non_border_cells_2 <- cluster2_obs[-border_cells_2, , drop = FALSE]
+        # 
+        # if (nrow(non_border_cells_2) > 0) {
+          border_nn_result_2 <- nn2(data = cluster2_obs, query = border_points_2, k = 2)
+          border_to_nonborder_2 <- border_nn_result_2$nn.dists[, 2]
+        # }else {
+          # print("NO non-border cells for cluster 2")
+        # }
+        
+        # Nearest neighbors from updated cluster1 to updated cluster2 and vice versa
+        nn_result_1 <- nn2(data = cluster2_obs, query = border_points_1, k = 1)
+        border_to_other_1 <- nn_result_1$nn.dists
+        
+        nn_result_2 <- nn2(data = cluster1_obs, query = border_points_2, k = 1)
+        border_to_other_2 <- nn_result_2$nn.dists
+        
+        #   
+        #   
+        #   # Exclude border cells from cluster1 observations
+        
+        # if (exists("border_to_nonborder_1") && exists("border_to_nonborder_2")
+            # && exists("border_to_other_1") && exists("border_to_other_2")) {
+          border_to_other <- c(border_to_other_1, border_to_other_2)
+          border_to_self <- c(border_to_nonborder_1, border_to_nonborder_2)
+          wilcox_result <- wilcox.test(border_to_other, border_to_self, alternative = "greater", paired=TRUE)
+          pval <- wilcox_result$p.value
+        # }
+      }
       
-      # Exclude border cells from updated cluster1 observations
-      # non_border_cells_1 <- cluster1_obs[-border_cells_1, , drop = FALSE]
       
-      # if (nrow(non_border_cells_1) > 0) {
-        border_nn_result_1 <- nn2(data = cluster1_obs, query = border_points_1, k = 2)
-        border_to_nonborder_1 <- border_nn_result_1$nn.dists[,2]
-      # } else {
-      #   print("NO non-border cells for cluster 1")
-      # }
-      
-      # -------- Process for updated cluster2 -------------- #
-      
-      # Get the nearest points in updated cluster2 (border points)
-      border_points_2 <- border_cells_2#cluster2_obs[border_cells_2, , drop = FALSE]
-      
-      # Exclude border cells from updated cluster2 observations
-      # non_border_cells_2 <- cluster2_obs[-border_cells_2, , drop = FALSE]
-      # 
-      # if (nrow(non_border_cells_2) > 0) {
-        border_nn_result_2 <- nn2(data = cluster2_obs, query = border_points_2, k = 2)
-        border_to_nonborder_2 <- border_nn_result_2$nn.dists[,2]
-      # }else {
-      #   print("NO non-border cells for cluster 2")
-      # }
-      
-      # Nearest neighbors from updated cluster1 to updated cluster2 and vice versa
-      nn_result_1 <- nn2(data = cluster2_obs, query = border_points_1, k = 1)
-      border_to_other_1 <- nn_result_1$nn.dists
-      
-      nn_result_2 <- nn2(data = cluster1_obs, query = border_points_2, k = 1)
-      border_to_other_2 <- nn_result_2$nn.dists
-      
-      #   
-      #   
-      #   # Exclude border cells from cluster1 observations
-      
-      # if (exists("border_to_nonborder_1") && exists("border_to_nonborder_2") 
-      #     && exists("border_to_other_1") && exists("border_to_other_2")) {
-        border_to_other <- c(border_to_other_1, border_to_other_2)
-        border_to_self <- c(border_to_nonborder_1, border_to_nonborder_2)
-        wilcox_result <- wilcox.test(border_to_other, border_to_self, alternative = "greater", paired=TRUE)
-        pval <- wilcox_result$p.value
-      # }
     
     } else {
       print("Clusters are not large enough.")
@@ -552,7 +556,7 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
     if (nrow(cluster1_obs) < 1 || nrow(cluster2_obs) < 1) {
       print("No data remaining! A cluster has been emptied")
       return(list(
-        border_cells = original_cluster1_obs, error_message = "NOT ENOUGH DATA"
+        border_cells = seq_len(nrow(original_cluster1_obs)), error_message = "NOT ENOUGH DATA"
       ))
     }
     
@@ -564,7 +568,7 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
     neighbor_counts <- table(nearest_neighbors)
     
     # Identify neighbors that are shared by more than 10% of cluster2 cells
-    overrepresented <- as.numeric(names(neighbor_counts[neighbor_counts > 0.3 * nrow(cluster2_obs)]))
+    overrepresented <- as.numeric(names(neighbor_counts[neighbor_counts > 0.1 * nrow(cluster2_obs)]))
     
     # If no overrepresented neighbors are found, exit the loop
     if (length(overrepresented) == 0) break
@@ -586,10 +590,10 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
   border_indices <- unique(c(border_indices, original_indices[nearest_neighbors_final]))
   
   # Use the original_cluster1_obs to extract border cells by their indices
-  border_cells <- original_cluster1_obs[border_indices, , drop = FALSE]
+  # border_cells <- original_cluster1_obs[border_indices, , drop = FALSE]
   
   # Return the border cells and any error message
-  return(list(border_cells = border_cells, error_message = NULL))
+  return(list(border_cells = border_indices, error_message = NULL))
 }
 
 
