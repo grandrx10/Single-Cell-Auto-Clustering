@@ -293,6 +293,9 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
   clusters <- rep(NULL, length(x))
   cluster_num <- 0
   
+  child_clusters <- rep(NULL, length(x))
+  child_borders <- rep(NULL, length(x))
+  
   ## move through nodes of dendrogram
   for (k in 1:(n-1)) {
     if (pd_map[k] == 0){
@@ -362,14 +365,14 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
         border_points_1 <- cluster1_obs[border_cells_1, , drop = FALSE]
         
         # Exclude border cells from updated cluster1 observations
-        # non_border_cells_1 <- cluster1_obs[-border_cells_1, , drop = FALSE]
+        non_border_cells_1 <- cluster1_obs[-border_cells_1, , drop = FALSE]
         
-        # if (nrow(non_border_cells_1) > 0) {
-          border_nn_result_1 <- nn2(data = cluster1_obs, query = border_points_1, k = 2)
-          border_to_nonborder_1 <- border_nn_result_1$nn.dists[,2]
-        # } else {
-        #   print("NO non-border cells for cluster 1")
-        # }
+        if (nrow(non_border_cells_1) > 0) {
+          border_nn_result_1 <- nn2(data = non_border_cells_1, query = border_points_1, k = 1)
+          border_to_nonborder_1 <- border_nn_result_1$nn.dists[,1]
+        } else {
+          print("NO non-border cells for cluster 1")
+        }
         
         # -------- Process for updated cluster2 -------------- #
         
@@ -377,14 +380,14 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
         border_points_2 <- cluster2_obs[border_cells_2, , drop = FALSE]
         
         # Exclude border cells from updated cluster2 observations
-        # non_border_cells_2 <- cluster2_obs[-border_cells_2, , drop = FALSE]
+        non_border_cells_2 <- cluster2_obs[-border_cells_2, , drop = FALSE]
         # 
-        # if (nrow(non_border_cells_2) > 0) {
-          border_nn_result_2 <- nn2(data = cluster2_obs, query = border_points_2, k = 2)
-          border_to_nonborder_2 <- border_nn_result_2$nn.dists[, 2]
-        # }else {
-          # print("NO non-border cells for cluster 2")
-        # }
+        if (nrow(non_border_cells_2) > 0) {
+          border_nn_result_2 <- nn2(data = non_border_cells_2, query = border_points_2, k = 1)
+          border_to_nonborder_2 <- border_nn_result_2$nn.dists[, 1]
+        }else {
+          print("NO non-border cells for cluster 2")
+        }
         
         # Nearest neighbors from updated cluster1 to updated cluster2 and vice versa
         nn_result_1 <- nn2(data = cluster2_obs, query = border_points_1, k = 1)
@@ -397,13 +400,13 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
         #   
         #   # Exclude border cells from cluster1 observations
         
-        # if (exists("border_to_nonborder_1") && exists("border_to_nonborder_2")
-            # && exists("border_to_other_1") && exists("border_to_other_2")) {
+        if (exists("border_to_nonborder_1") && exists("border_to_nonborder_2")
+            && exists("border_to_other_1") && exists("border_to_other_2")) {
           border_to_other <- c(border_to_other_1, border_to_other_2)
           border_to_self <- c(border_to_nonborder_1, border_to_nonborder_2)
           wilcox_result <- wilcox.test(border_to_other, border_to_self, alternative = "greater", paired=TRUE)
           pval <- wilcox_result$p.value
-        # }
+        }
       }
       
       
@@ -429,7 +432,24 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
         if (nd_type[k] == "not_sig") {
           clusters[cluster1] = cluster_num
           # cluster_num = cluster_num + 1
+          child_clusters[cluster1] = paste0(cluster_num, "a") 
           clusters[cluster2] = cluster_num
+          child_clusters[cluster2] = paste0(cluster_num, "b") 
+          
+          cluster1_indices <- which(cluster1)
+          # Get the indices of border_points_2 within cluster2_obs
+          border_indices_in_cluster1 <- which(rownames(cluster1_obs) %in% rownames(border_points_1))
+          # Map these indices back to the original x
+          border_indices_in_x_1 <- cluster1_indices[border_indices_in_cluster1]
+          child_borders[border_indices_in_x_1] = cluster_num
+          
+          cluster2_indices <- which(cluster2)
+          # Get the indices of border_points_2 within cluster2_obs
+          border_indices_in_cluster2 <- which(rownames(cluster2_obs) %in% rownames(border_points_2))
+          # Map these indices back to the original x
+          border_indices_in_x_2 <- cluster2_indices[border_indices_in_cluster2]
+          child_borders[border_indices_in_x_2] = cluster_num
+          
           # if (cluster_num == 0){
           #   cluster_num = cluster_num + 1
           #   clusters[cluster2] = cluster_num
@@ -568,15 +588,15 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
     neighbor_counts <- table(nearest_neighbors)
     
     # Identify neighbors that are shared by more than 10% of cluster2 cells
-    overrepresented <- as.numeric(names(neighbor_counts[neighbor_counts > 0.1 * nrow(cluster2_obs)]))
+    overrepresented <- as.numeric(names(neighbor_counts[neighbor_counts > 0.5 * nrow(cluster2_obs)]))
     
     # If no overrepresented neighbors are found, exit the loop
     if (length(overrepresented) == 0) break
     
     # Add overrepresented neighbors to the border_indices (using original indices)
-    border_indices <- unique(c(border_indices, original_indices[overrepresented]))
+    border_indices <- c(border_indices, original_indices[overrepresented])
     
-    # Remove the overrepresented cells from cluster1 and update original_indices
+    # Remove the overrepresented cells from cluster1
     cluster1_obs <- cluster1_obs[-overrepresented, , drop = FALSE]
     original_indices <- original_indices[-overrepresented]
     print("Overrepresented detection.")
@@ -588,13 +608,17 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
   
   # Add final nearest neighbors to the border_indices (using original indices)
   border_indices <- unique(c(border_indices, original_indices[nearest_neighbors_final]))
-  
+  print("Cluster size:")
+  print(length(original_indices))
+  print("BORDER LENGTH:")
+  print(length(border_indices))
   # Use the original_cluster1_obs to extract border cells by their indices
   # border_cells <- original_cluster1_obs[border_indices, , drop = FALSE]
   
   # Return the border cells and any error message
   return(list(border_cells = border_indices, error_message = NULL))
 }
+
 
 
 
