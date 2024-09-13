@@ -295,6 +295,8 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
   
   child_clusters <- rep(NULL, length(x))
   child_borders <- rep(NULL, length(x))
+  print(length(child_borders))
+  latest_borders <- rep(NA, length(x))
   
   ## move through nodes of dendrogram
   for (k in 1:(n-1)) {
@@ -352,8 +354,8 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
       cluster2_obs <- x[cluster2, , drop=FALSE]
 
       # Find border cells for both clusters
-      results_1 <- find_border_cells(cluster1_obs, cluster2_obs)
-      results_2 <- find_border_cells(cluster2_obs, cluster1_obs)
+      results_1 <- find_border_cells_simple(cluster1_obs, cluster2_obs)
+      results_2 <- find_border_cells_simple(cluster2_obs, cluster1_obs)
       
       # Extract border cells and updated observations
       border_cells_1 <- results_1$border_cells
@@ -423,58 +425,38 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
     
     ## update nd_type (node type)
     if (alpha < 1) {
-      if (ci_emp) {
-        nd_type[k] <- ifelse(p_emp[k, ci_idx] < cutoff[k],
+      nd_type[k] <- ifelse(pval < curr_cutoff, #p_norm[k, ci_idx] < cutoff[k],
                              "sig", "not_sig")
-      } else {
-        nd_type[k] <- ifelse(pval < curr_cutoff, #p_norm[k, ci_idx] < cutoff[k],
-                             "sig", "not_sig")
-        if (nd_type[k] == "not_sig") {
-          clusters[cluster1] = cluster_num
-          # cluster_num = cluster_num + 1
-          child_clusters[cluster1] = paste0(cluster_num, "a") 
-          clusters[cluster2] = cluster_num
-          child_clusters[cluster2] = paste0(cluster_num, "b") 
-          
-          cluster1_indices <- which(cluster1)
-          # Get the indices of border_points_2 within cluster2_obs
-          border_indices_in_cluster1 <- which(rownames(cluster1_obs) %in% rownames(border_points_1))
-          # Map these indices back to the original x
-          border_indices_in_x_1 <- cluster1_indices[border_indices_in_cluster1]
-          child_borders[border_indices_in_x_1] = cluster_num
-          
-          cluster2_indices <- which(cluster2)
-          # Get the indices of border_points_2 within cluster2_obs
-          border_indices_in_cluster2 <- which(rownames(cluster2_obs) %in% rownames(border_points_2))
-          # Map these indices back to the original x
-          border_indices_in_x_2 <- cluster2_indices[border_indices_in_cluster2]
-          child_borders[border_indices_in_x_2] = cluster_num
-          
-          # if (cluster_num == 0){
-          #   cluster_num = cluster_num + 1
-          #   clusters[cluster2] = cluster_num
-          #   
-          #   idx <- cluster1[border_cells_1]
-          #   clusters[idx] = 60
-          #   idx <- cluster2[border_cells_2]
-          #   clusters[idx] = 61
-          # }
-          
-          # if (cluster_num == 3) {
-          #   p = pd_map[k] 
-          #   idx_sub <- unlist(idx_hc[p, ])
-          #   hc_isim <- .cluster_shc(x[idx_sub, ], metric, matmet, linkage, l, rcpp)
-          #   split <- cutree(hc_isim, k=2)
-          #   cluster1 <- idx_sub[split == 1]
-          #   cluster2 <- idx_sub[split == 2]
-          #   clust1 = cluster2
-          #   clust2 = cluster1
-          # }
-          cluster_num = cluster_num + 1
-        }
+      if (nd_type[k] == "not_sig") {
+        print("main clustering... not significant.")
+        clusters[cluster1] = cluster_num
+        # cluster_num = cluster_num + 1
+        child_clusters[cluster1] = paste0(cluster_num, "a") 
+        clusters[cluster2] = cluster_num
+        child_clusters[cluster2] = paste0(cluster_num, "b") 
+        
+        border_indices_in_x_1 <- cluster1[border_cells_1]
+        child_borders[border_indices_in_x_1] = paste0(cluster_num, "a")
+        
+      
+        border_indices_in_x_2 <- cluster2[border_cells_2]
+        child_borders[border_indices_in_x_2] = paste0(cluster_num, "b")
+        print(length(child_borders))
+        
+        cluster_num = cluster_num + 1
+      } else { # if you were significantly different
+        
+        border_indices_in_x_1 <- cluster1[border_cells_1]
+        latest_borders[cluster1] = NA
+        latest_borders[border_indices_in_x_1] = paste0(cluster_num, "a")
+        
+        border_indices_in_x_2 <- cluster2[border_cells_2]
+        latest_borders[cluster2] = NA
+        latest_borders[border_indices_in_x_2] = paste0(cluster_num, "b")
       }
     } else {
       nd_type[k] <- "cutoff_skipped"
+      
     }
   }
 
@@ -531,7 +513,7 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
   #     clusters[i] = 4
   #   }
   # }
-  
+  stop()
   
   
   ## return shc S3 object
@@ -551,7 +533,10 @@ shc <- function(x, metric = "euclidean", vecmet = NULL, matmet = NULL,
          p_norm = p_norm,
          idx_hc = idx_hc,
          hc_dat = hc_dat,
-         clusters = clusters),
+         clusters = clusters,
+         child_clusters = child_clusters,
+         child_borders = child_borders,
+         latest_borders = latest_borders),
     class = "shc")
 }
 
@@ -617,6 +602,36 @@ find_border_cells <- function(cluster1_obs, cluster2_obs) {
   
   # Return the border cells and any error message
   return(list(border_cells = border_indices, error_message = NULL))
+}
+
+
+find_border_cells_simple <- function(cluster1_obs, cluster2_obs, distance_threshold = 1.2) {
+  library(RANN)
+  
+  # Step 1: Calculate the centroid of cluster1 in the PC space
+  cluster1_centroid <- colMeans(cluster1_obs)
+  
+  # Step 2: Calculate the distances of all cells in cluster1 to the centroid
+  cluster1_distances <- sqrt(rowSums((cluster1_obs - cluster1_centroid)^2))
+  
+  # Step 3: Filter out cells that are farther from the centroid than the threshold
+  avg_distance <- mean(cluster1_distances)
+  filtered_cluster1_obs <- cluster1_obs[cluster1_distances <= (avg_distance * distance_threshold), , drop = FALSE]
+  
+  # Save the original indices of the filtered cells
+  filtered_indices <- which(cluster1_distances <= (avg_distance * distance_threshold))
+  
+  # Step 4: Use RANN to find the nearest neighbor of each cell in cluster2 relative to the filtered cluster1
+  # Use RANN::nn2 to find nearest neighbors
+  nn_result <- nn2(data = filtered_cluster1_obs, query = cluster2_obs, k = 1)
+  
+  # Get the indices of the nearest neighbors in the filtered cluster1
+  nearest_neighbor_indices <- nn_result$nn.idx[, 1]
+  
+  # Map the nearest neighbor indices back to the original indices of cluster1
+  border_cell_indices <- filtered_indices[nearest_neighbor_indices]
+  
+  return (list(border_cells = border_cell_indices, error_message = NULL))
 }
 
 
